@@ -1,7 +1,9 @@
+// Load the AWS SDK for Node.js
+var AWS = require('aws-sdk');
+const fs = require('fs')
+
+
 try {
-    // Load the AWS SDK for Node.js
-    var AWS = require('aws-sdk');
-    const fs = require('fs')
     // Set the region
     AWS.config.update({region: 'sa-east-1'});
     const filename = './Activity.Computed.json'
@@ -24,17 +26,23 @@ try {
         TableName: database
     };
 
-    ddb.query(params, function(err, data) {
+    ddb.query(params, async (err, data) => {
         if (err) {
             console.log("Error", err);
-        } else {
-            data.Items.forEach(function(element, index, array) {
-                fs.appendFile(filename, JSON.stringify(element) + ',', function (err) {
-                    if (err) throw err;
-                    console.log('Saved!');
-                });
-            });
-        }
+        } 
+
+        console.log(`${data.Items.length} records. Saving file...`)
+
+        await fs.writeFileSync(filename, '[')
+
+        await data.Items.map(async (element, index) => {
+            const append = index === data.Items.length - 1 ? '' : ','
+            const record = JSON.stringify(element) + append
+            await fs.appendFileSync(filename, record)
+        });
+        
+        console.log('Saved!');
+        await fs.appendFileSync(filename, ']')
     });
 } catch (error) {
     console.log(error)
