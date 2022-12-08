@@ -29,7 +29,7 @@ try {
             console.log("Error", err);
         } else {
             data.Items.forEach(function(element, index, array) {
-                fs.appendFile(filename, JSON.stringify(element), function (err) {
+                fs.appendFile(filename, JSON.stringify(element) + ',', function (err) {
                     if (err) throw err;
                     console.log('Saved!');
                 });
