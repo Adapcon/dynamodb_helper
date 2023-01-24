@@ -46,7 +46,6 @@ const args: Arguments = yargs
 .option('sortKey', {
   alias: 'sk',
   description: 'SortKey key in Record',
-  demandOption: true
 })
 .option('clientProp', {
   alias: 'p',
@@ -128,7 +127,7 @@ const remove = async (item: DynamoDbRecord): Promise<any> => {
         ...defaultParams,
         Key: {
           [partitionKey]: item[partitionKey],
-          [sortKey]: item[sortKey]
+          ...sortKey ? { [sortKey]: item[sortKey] } : {}
         }
       }
       await ddbClient.delete(params, (err, data) => {
