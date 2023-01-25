@@ -45,6 +45,7 @@ const args: Arguments = yargs
 })
 .option('sortKey', {
   alias: 'sk',
+  type: 'string',
   description: 'SortKey key in Record',
 })
 .option('clientProp', {
@@ -66,7 +67,6 @@ const {
 } = args
 const blockedAppIds = appId.split(',')
 const clientIdProp = clientProp ? clientProp : 'appId'
-
 
 // Set the parameters
 const defaultParams = {
@@ -91,12 +91,12 @@ const run = async () => {
     }
 
     const {Items: items} = scanned
-    console.log('Total: ', items, items?.length)
+    console.log('Total: ', items?.length)
     if(items && items?.length) {
       const toRemove = recordVerifier(items as [DynamoDbRecord]) as [DynamoDbRecord]
       const promiseRemove = toRemove.map(async item => remove(item))
       Promise.all(promiseRemove)
-      console.log('Records removed', toRemove.length)
+      console.log('Records removed: ', toRemove.length)
     }
   } catch (err) {
     console.error(err);
@@ -105,11 +105,12 @@ const run = async () => {
 
 const scan = async (LastEvaluatedKey?: {LastEvaluatedKey: {key: string}}): Promise<DynamoDbScan> => {
   const fields = [ partitionKey, sortKey, clientIdProp ]
+  const ProjectionExpression = [...new Set(fields.filter(field => field.length))].join(', ')
   return new Promise(async (resolve, reject) => {
     await ddbClient.scan({
         ...defaultParams,
         ...!!LastEvaluatedKey ? {ExclusiveStartKey: LastEvaluatedKey} : {},
-        ProjectionExpression: [...new Set(fields)].join(', '),
+        ProjectionExpression
       }, (err, data) => {
         if(err)
           reject(err)
