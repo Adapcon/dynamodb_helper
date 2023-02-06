@@ -1,0 +1,1 @@
+npm run deleteScan -- -t Activity.Computed -a amc,amcfornecedor,amcplm,amcrepresentante,skazi,skazifornecedor,amclicenciado,admin --pk id --sk code -p id -v
