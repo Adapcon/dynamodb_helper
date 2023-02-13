@@ -79,13 +79,11 @@ const run = async () => {
   try {
     let scanned = await scan()
     let { LastEvaluatedKey }: any = scanned
-    if(!(!!limit && !!stopOnLimit) && !!LastEvaluatedKey) {
+    if(!(!!limit && !!stopOnLimit) && !!LastEvaluatedKey && scanned.Items?.length) {
       do {
         const newData = await scan(LastEvaluatedKey)
-        scanned = {
-          ...scanned,
-          ...newData
-        }
+        if(newData.Items)
+          scanned.Items.push(...newData.Items)
         LastEvaluatedKey = newData.LastEvaluatedKey
       } while (typeof LastEvaluatedKey !== 'undefined')
     }
