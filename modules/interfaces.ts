@@ -21,3 +21,7 @@ export interface DynamoDbScan {
   ScannedCount?: number
   LastEvaluatedKey?: {[key:string]: string}
 }
+
+export interface ScannedData {
+  [key: string]: any;
+}

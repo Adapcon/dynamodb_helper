@@ -4,6 +4,7 @@ import {
   DynamoDbRecord,
   DynamoDbScan,
   Arguments,
+  ScannedData
 } from './interfaces';
 import yargs from 'yargs';
 
@@ -92,8 +93,14 @@ const run = async () => {
     console.log('Total: ', items?.length)
     if(items && items?.length) {
       const toRemove = recordVerifier(items as [DynamoDbRecord]) as [DynamoDbRecord]
-      const promiseRemove = toRemove.map(async item => remove(item))
-      Promise.all(promiseRemove)
+
+      const chunksOfData: ScannedData[][] = assembleChunksOfObjects(toRemove, 100) as []
+      chunksOfData.forEach(element => {
+        console.log('element', element)
+        const promiseRemove = element.map(async item => remove(item))
+        Promise.all(promiseRemove)
+      });
+
       console.log('Records removed: ', toRemove.length)
     }
   } catch (err) {
@@ -151,6 +158,20 @@ const recordVerifier = (items: [DynamoDbRecord]|[]): [DynamoDbRecord]|[] => {
   return filtered as [DynamoDbRecord]
 }
 
+const assembleChunksOfObjects = (
+  scannedData: ScannedData[],
+  chunkSize: number
+): ScannedData[][] => {
+  const chunks: ScannedData[][] = scannedData.reduce((acc: ScannedData[][], curr: ScannedData, index) => {
+    const chunkIndex = Math.floor(index / chunkSize);
+    if (!acc[chunkIndex]) {
+      acc[chunkIndex] = [];
+    }
+    acc[chunkIndex].push(curr);
+    return acc;
+  }, []);
+  return chunks;
+};
 
 
 run();
