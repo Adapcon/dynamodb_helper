@@ -78,35 +78,46 @@ const defaultParams = {
 
 const run = async () => {
   try {
-    let scanned = await scan()
+    const scanned: {[key:string]:any} = await scan()
     let { LastEvaluatedKey }: any = scanned
-    if(!(!!limit && !!stopOnLimit) && !!LastEvaluatedKey && scanned.Items?.length) {
-      do {
-        const newData = await scan(LastEvaluatedKey)
-        if(newData.Items)
-          scanned.Items.push(...newData.Items)
-        LastEvaluatedKey = newData.LastEvaluatedKey
-      } while (typeof LastEvaluatedKey !== 'undefined')
-    }
 
     const {Items: items} = scanned
-    console.log('Total: ', items?.length)
+    console.log('Scanned Ammount: ', items?.length)
     if(items && items?.length) {
-      const toRemove = recordVerifier(items as [DynamoDbRecord]) as [DynamoDbRecord]
+      await removerValidation(items)
+    }
 
-      const chunksOfData: ScannedData[][] = assembleChunksOfObjects(toRemove, 100) as []
-      chunksOfData.forEach(element => {
-        console.log('element', element)
-        const promiseRemove = element.map(async item => remove(item))
-        Promise.all(promiseRemove)
-      });
+    const scanMorePages = !(!!limit && !!stopOnLimit)
+    const hasMorePages = !!LastEvaluatedKey
 
-      console.log('Records removed: ', toRemove.length)
+    if(scanMorePages && hasMorePages && items?.length) {
+      do {
+        const newData = await scan(LastEvaluatedKey)
+        LastEvaluatedKey = newData.LastEvaluatedKey
+        if(newData.Items) {
+          const {Items: items} = newData
+          if(items && items?.length) {
+            await removerValidation(items)
+          }
+        }
+      } while (typeof LastEvaluatedKey !== 'undefined')
     }
   } catch (err) {
     console.error(err);
   }
 };
+
+const removerValidation = async (items: {}) => {
+  const toRemove = recordVerifier(items as [DynamoDbRecord]) as [DynamoDbRecord]
+
+  const chunksOfData: ScannedData[][] = assembleChunksOfObjects(toRemove, 100) as []
+  chunksOfData.forEach(async element => {
+    const promiseRemove = element.map(async item => remove(item))
+    await Promise.all(promiseRemove)
+  });
+
+  console.log('Records removed: ', toRemove.length)
+}
 
 const scan = async (LastEvaluatedKey?: {LastEvaluatedKey: {key: string}}): Promise<DynamoDbScan> => {
   const fields = [ partitionKey, sortKey, clientIdProp ]
@@ -162,16 +173,13 @@ const assembleChunksOfObjects = (
   scannedData: ScannedData[],
   chunkSize: number
 ): ScannedData[][] => {
-  const chunks: ScannedData[][] = scannedData.reduce((acc: ScannedData[][], curr: ScannedData, index) => {
-    const chunkIndex = Math.floor(index / chunkSize);
-    if (!acc[chunkIndex]) {
-      acc[chunkIndex] = [];
-    }
-    acc[chunkIndex].push(curr);
-    return acc;
-  }, []);
+  const chunks: ScannedData[][] = [];
+  for (let i = 0; i < scannedData.length; i += chunkSize) {
+    chunks.push(scannedData.slice(i, i + chunkSize));
+  }
   return chunks;
 };
+
 
 
 run();
