@@ -13,6 +13,7 @@ export interface Arguments {
   partitionKey: string
   sortKey: string
   clientProp: string
+  executeQuery: string
 }
 
 export interface DynamoDbScan {

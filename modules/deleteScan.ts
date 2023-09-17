@@ -7,6 +7,7 @@ import {
   ScannedData
 } from './interfaces';
 import yargs from 'yargs';
+import {setTimeout} from "timers/promises"
 
 const args: Arguments = yargs
 .option('table', {
@@ -52,9 +53,13 @@ const args: Arguments = yargs
 .option('clientProp', {
   alias: 'p',
   description: 'Custom prop that saves the client\'s ID (Default is appId)'
+})
+.option('executeQuery', {
+  alias: 'q',
+  description: 'Do a query instead of scan to search for records to delete'
 }).argv as Arguments
 
-console.log('args', args)
+console.log('Execution Args', args)
 const {
   appId,
   table,
@@ -64,7 +69,8 @@ const {
   exclude,
   partitionKey,
   sortKey,
-  clientProp
+  clientProp,
+  executeQuery
 } = args
 const blockedAppIds = appId.split(',')
 const clientIdProp = clientProp ? clientProp : 'appId'
@@ -78,11 +84,25 @@ const defaultParams = {
 
 const run = async () => {
   try {
-    const scanned: {[key:string]:any} = await scan()
-    let { LastEvaluatedKey }: any = scanned
+    if(executeQuery)
+      await handleQuery()
+    else
+      await handleScan()
+  } catch (err) {
+    console.error(err);
+  }
+};
 
-    const {Items: items} = scanned
-    console.log('Scanned Ammount: ', items?.length)
+const handleQuery = async () => {
+  blockedAppIds.map(async (appId) => {
+    const search: {[key: string]: any} = await query({
+      partitionKeyName: clientProp,
+      partitionKeyValue: appId
+    })
+    let { LastEvaluatedKey }: any = search
+
+    const {Items: items} = search
+    console.log('Found: ', items?.length)
     if(items && items?.length) {
       await removerValidation(items)
     }
@@ -92,20 +112,53 @@ const run = async () => {
 
     if(scanMorePages && hasMorePages && items?.length) {
       do {
-        const newData = await scan(LastEvaluatedKey)
+        const newData = await await query({
+          partitionKeyName: clientProp,
+          partitionKeyValue: appId,
+          LastEvaluatedKey
+        })
         LastEvaluatedKey = newData.LastEvaluatedKey
+        console.log('Next Page: --> ', LastEvaluatedKey)
         if(newData.Items) {
           const {Items: items} = newData
           if(items && items?.length) {
             await removerValidation(items)
           }
         }
+        await setTimeout(1000)
       } while (typeof LastEvaluatedKey !== 'undefined')
     }
-  } catch (err) {
-    console.error(err);
+  })
+}
+
+const handleScan = async () => {
+  const search: {[key:string]:any} = await scan()
+  let { LastEvaluatedKey }: any = search
+
+  const {Items: items} = search
+  console.log('Found: ', items?.length)
+  if(items && items?.length) {
+    await removerValidation(items)
   }
-};
+
+  const scanMorePages = !(!!limit && !!stopOnLimit)
+  const hasMorePages = !!LastEvaluatedKey
+
+  if(scanMorePages && hasMorePages && items?.length) {
+    do {
+      const newData = await scan(LastEvaluatedKey)
+      LastEvaluatedKey = newData.LastEvaluatedKey
+      console.log('Next Page: --> ', LastEvaluatedKey)
+      if(newData.Items) {
+        const {Items: items} = newData
+        if(items && items?.length) {
+          await removerValidation(items)
+        }
+      }
+      await setTimeout(1000)
+    } while (typeof LastEvaluatedKey !== 'undefined')
+  }
+}
 
 const removerValidation = async (items: {}) => {
   const toRemove = recordVerifier(items as [DynamoDbRecord]) as [DynamoDbRecord]
@@ -132,6 +185,43 @@ const scan = async (LastEvaluatedKey?: {LastEvaluatedKey: {key: string}}): Promi
           reject(err)
         resolve(data as DynamoDbScan)
       })
+  })
+}
+
+const query = async ({
+  partitionKeyName,
+  partitionKeyValue,
+  LastEvaluatedKey,
+}:{
+  partitionKeyName: string,
+  partitionKeyValue: string
+  LastEvaluatedKey?: {key: string},
+}): Promise<DynamoDbScan> => {
+  const KeyConditionExpression = `${partitionKeyName} = :clientProp`
+  const fields = [ `#${partitionKey}`, `#${sortKey}` ]
+  const ProjectionExpression = [...new Set(fields.filter(field => field.length))].join(', ')
+  const ExpressionAttributeNames = {
+    [`#${partitionKey}`]: partitionKey,
+    [`#${sortKey}`]: sortKey
+  }
+  const ExpressionAttributeValues = {
+    ':clientProp': partitionKeyValue
+  }
+  const params = {
+    ...defaultParams,
+    KeyConditionExpression,
+    ProjectionExpression,
+    ExpressionAttributeValues,
+    ExpressionAttributeNames,
+    ...!!LastEvaluatedKey ? {ExclusiveStartKey: LastEvaluatedKey} : {},
+  }
+
+  return new Promise(async (resolve, reject) => {
+    await ddbClient.query(params, (err, data) => {
+      if(err)
+        reject(err)
+      resolve(data as DynamoDbScan)
+    })
   })
 }
 
